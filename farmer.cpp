@@ -30,7 +30,7 @@ int main(){
             istringstream iss(line);
             iss >> p >> t;
             cout << line<< endl;
-            farm_h.grass_vec[i].init(p, t);
+            farm_h.grass_vec[i]->init(p, t);
         }
         
         for(int i = 0; i<M; i++){

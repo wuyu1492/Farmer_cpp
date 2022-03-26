@@ -14,16 +14,6 @@
 #include <vector>
 using namespace std;
 
-struct seg_s{
-    int left;
-    int right;
-    int tasti; // sum of tasti
-    vector<int> gid_vec; // vector of grass id
-    bool operator < (const seg_s &seg_h) const {
-        return (tasti < seg_h.tasti);
-    }
-};
-
 class Grass{
 public:
     int pos;
@@ -37,7 +27,29 @@ public:
         is_claimed = false;
         max_dist = -1;
     }
+    int get_tasti(){ return (is_claimed? 0 : tasti);}
 };
+
+struct seg_s{
+    int left;
+    int right;
+    int tasti; // sum of tasti
+    vector<Grass*> g_vec;
+    
+    int get_tasti(){ // sum unclaimed tastiness
+        int t = 0;
+        for(int i=0; i<g_vec.size(); i++){
+            t = t + g_vec[i]->get_tasti();
+        }
+        tasti = t;
+        return t;
+    }
+    
+    bool operator < (const seg_s &seg_h) const {
+        return (tasti < seg_h.tasti);
+    }
+};
+
 
 class Farm {
 public:
@@ -45,7 +57,7 @@ public:
     int M;
     int N;
     
-    Grass* grass_vec;
+    Grass** grass_vec;
     int* nhoj; // nhoj's cow
     queue<seg_s> seg_q;
     vector<seg_s> seg_vec;
@@ -77,11 +89,17 @@ Farm::Farm(int k, int m, int n){
     K = k;
     M = m;
     N = n;
-    grass_vec = new Grass[K]; // patch location
+    grass_vec = new Grass*[K]; // patch location
+    for(int i=0; i<K; i++){
+        grass_vec[i] = new Grass;
+    }
     nhoj = new int[M];
 }
 
 Farm::~Farm(){
+    for(int i=0; i<K; i++){
+        delete grass_vec[i];
+    }
     delete[] grass_vec;
     delete[] nhoj;
 }
@@ -92,13 +110,13 @@ void Farm::rm_occu_patch(){
     int i = 0;
     int j = 0;
     for (; i<M;){
-        if (nhoj[i] == grass_vec[j].pos){
-            grass_vec[j].tasti = 0;
-            grass_vec[j].is_claimed = true;
+        if (nhoj[i] == grass_vec[j]->pos){
+            grass_vec[j]->tasti = 0;
+            grass_vec[j]->is_claimed = true;
             i++;
             j++;
         }
-        else if(nhoj[i] < grass_vec[j].pos){ // Nhoj on the left
+        else if(nhoj[i] < grass_vec[j]->pos){ // Nhoj on the left
             i++;
         }
         else{
@@ -111,8 +129,8 @@ void Farm::rm_occu_patch(){
     }
     cout << "Finished remove occupied patch, display grass pos" << endl;
     for(int i=0; i<K; i++){
-        cout << "i = " << i << ", pos = " << grass_vec[i].pos;
-        cout << ", tasti = " << grass_vec[i].tasti << endl;
+        cout << "i = " << i << ", pos = " << grass_vec[i]->pos;
+        cout << ", tasti = " << grass_vec[i]->tasti << endl;
     }
 }
 
@@ -148,13 +166,13 @@ void Farm::get_max_dist(){
     // for each patch, find the closest Nhoj's cow
     cout << "Calc max dist for John to take a patch" << endl;
     for (int i = 0; i<K; i++){
-        if (grass_vec[i].is_claimed)
+        if (grass_vec[i]->is_claimed)
             continue;
-        int pos = grass_vec[i].pos;
+        int pos = grass_vec[i]->pos;
         int j = binary_search_nhoj(pos, 0, M-1);
-        grass_vec[i].max_dist = abs(nhoj[j]-pos);
+        grass_vec[i]->max_dist = abs(nhoj[j]-pos);
         cout << "patch[" << i << "].max_dist = ";
-        cout << grass_vec[i].max_dist << endl;
+        cout << grass_vec[i]->max_dist << endl;
     }
 }
 
@@ -163,16 +181,16 @@ void Farm::gen_segments(){
     // iteration 1
     cout << "1st Iteration start, display segments:" << endl;
     for(int i = 0; i < K; i++){
-        if(!grass_vec[i].is_claimed){
+        if(!grass_vec[i]->is_claimed){
             seg_s seg;
-            int max_dist = grass_vec[i].max_dist;
-            int pos = grass_vec[i].pos;
+            int max_dist = grass_vec[i]->max_dist;
+            int pos = grass_vec[i]->pos;
             seg.left = pos - max_dist;
             if (seg.left < 0)
                 seg.left = 0;
             seg.right = pos + max_dist;
-            seg.tasti = grass_vec[i].tasti;
-            seg.gid_vec.push_back(i);
+            seg.tasti = grass_vec[i]->tasti;
+            seg.g_vec.push_back(grass_vec[i]);
             seg_q.push(seg);
             cout << "[" << seg.left << ", " << seg.right << "] ";
             cout << "tasti = " << seg.tasti << endl;
@@ -203,16 +221,14 @@ void Farm::gen_segments(){
                     seg_s seg_overlap;
                     seg_overlap.left = seg1.left;
                     seg_overlap.right = it->right;
-                    seg_overlap.tasti = it->tasti + seg1.tasti;
-                    seg_overlap.gid_vec = it->gid_vec;
-                    seg_overlap.gid_vec.insert(seg_overlap.gid_vec.end(), seg1.gid_vec.begin(), seg1.gid_vec.end());
+                    seg_overlap.g_vec = it->g_vec;
+                    seg_overlap.g_vec.insert(seg_overlap.g_vec.end(), seg1.g_vec.begin(), seg1.g_vec.end());
                     it->right = seg1.left;
                     // append new seg
                     seg_s seg_new;
                     seg_new.left = seg_overlap.right;
                     seg_new.right = seg1.right;
-                    seg_new.tasti = seg1.tasti;
-                    seg_new.gid_vec = seg1.gid_vec;
+                    seg_new.g_vec = seg1.g_vec;
                     seg_vec.push_back(seg_overlap);
                     seg_vec.push_back(seg_new);
                 }
@@ -221,22 +237,21 @@ void Farm::gen_segments(){
                     seg_s seg_overlap;
                     seg_overlap.left = seg1.left;
                     seg_overlap.right = it->right;
-                    seg_overlap.tasti = it->tasti + seg1.tasti;
-                    seg_overlap.gid_vec = it->gid_vec;
-                    seg_overlap.gid_vec.insert(seg_overlap.gid_vec.end(), seg1.gid_vec.begin(), seg1.gid_vec.end());
+                    //seg_overlap.tasti = it->tasti + seg1.tasti;
+                    seg_overlap.g_vec = it->g_vec;
+                    seg_overlap.g_vec.insert(seg_overlap.g_vec.end(), seg1.g_vec.begin(), seg1.g_vec.end());
                     it->right = seg1.left;
                     seg_vec.push_back(seg_overlap);
                 }
             }
             else if (it->left == seg1.left){
                 // previous seg overlapping
-                it->tasti = it->tasti + seg1.tasti;
-                it->gid_vec.insert(it->gid_vec.end(), seg1.gid_vec.begin(), seg1.gid_vec.end());
+                //it->tasti = it->tasti + seg1.tasti;
+                it->g_vec.insert(it->g_vec.end(), seg1.g_vec.begin(), seg1.g_vec.end());
                 seg_s seg_new;
                 seg_new.left = it->right;
                 seg_new.right = seg1.right;
-                seg_new.tasti = seg1.tasti;
-                seg_new.gid_vec = seg1.gid_vec;
+                seg_new.g_vec = seg1.g_vec;
                 seg_vec.push_back(seg_new);
             }
             else {
@@ -245,13 +260,12 @@ void Farm::gen_segments(){
                 seg_s seg_new;
                 seg_new.left = it->right;
                 seg_new.right = seg1.right;
-                seg_new.tasti = seg1.tasti;
-                seg_new.gid_vec = seg1.gid_vec;
+                //seg_new.tasti = seg1.tasti;
+                seg_new.g_vec = seg1.g_vec;
                 while(it!= seg_vec.begin()){
                     it--;
                     if(it->right > seg1.left){
-                        it->tasti = it->tasti + seg1.tasti;
-                        it->gid_vec.insert(it->gid_vec.end(), seg1.gid_vec.begin(), seg1.gid_vec.end());
+                        it->g_vec.insert(it->g_vec.end(), seg1.g_vec.begin(), seg1.g_vec.end());
                     }
                     else{
                         break;
@@ -265,46 +279,42 @@ void Farm::gen_segments(){
     for (int i = 0; i< seg_vec.size(); i++){
         cout << "[" << seg_vec[i].left << ", ";
         cout << seg_vec[i].right << "], tasti = ";
-        cout << seg_vec[i].tasti << endl;
+        cout << seg_vec[i].get_tasti() << endl;
     }
 }
 
 int Farm::get_max_tasti(){
-    // sort seg_t
+    // sort seg_t by its total_tastiness
     sort(seg_vec.begin(), seg_vec.end());
     int total_tasti = 0;
     if (N < seg_vec.size()){
         vector<seg_s>::iterator it = seg_vec.end();
         it--;
         for(int i=0; i<N; i++){
-            for(int j = 0; j < it->gid_vec.size(); j++){
-                int gid = it->gid_vec[j];
-                grass_vec[gid].is_claimed = true;
+            total_tasti = total_tasti + it->get_tasti(); // it->tasti is updated
+            for(int j = 0; j < it->g_vec.size(); j++){
+                it->g_vec[j]->is_claimed = true;
             }
-            total_tasti = total_tasti + it->tasti;
             cout << "pos = [" << it->left << ", ";
             cout << it->right << "], tasti = " << it->tasti << endl;
             seg_vec.pop_back();
             vector<seg_s>::iterator it_2 = seg_vec.end();
-            while(it_2 != seg_vec.begin()){
-                it_2--;
-                for(int j = 0; j < it_2->gid_vec.size(); j++){
-                    int gid = it_2->gid_vec[j];
-                    if (grass_vec[gid].is_claimed == true){
-                        it_2->tasti = it_2->tasti - grass_vec[gid].tasti;
-                    }
-                }
-            }
+            for(int j=0; j < seg_vec.size(); j++)
+                seg_vec[j].get_tasti();
             sort(seg_vec.begin(), seg_vec.end());
             it = seg_vec.end();
             it--;
         }
     }
     else{ // N >= seg number
+        // sum up all the tasti
         vector<seg_s>::iterator it = seg_vec.end();
         while(it!=seg_vec.begin()){
             it--;
-            total_tasti = total_tasti + it->tasti;
+            total_tasti = total_tasti + it->get_tasti();
+            for(int j = 0; j < it->g_vec.size(); j++){
+                it->g_vec[j]->is_claimed = true;
+            }
         }
     }
     return total_tasti;
